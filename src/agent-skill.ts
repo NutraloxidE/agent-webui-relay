@@ -22,16 +22,39 @@ Treat a successful relay call as **task delivered**, not **task completed**.
 ## Before sending
 
 1. Run \`awr doctor\` if browser/login readiness is uncertain.
-2. Use \`awr chat list\` to inspect saved conversation aliases when you do not already know the target.
-3. Prefer an existing conversation alias when the task belongs to an ongoing workflow.
-4. Use \`--new\` only when a new conversation is appropriate.
+2. If you know only words from the target ChatGPT conversation, search the Web UI history with \`awr sessions search "<terms>"\`. This returns only conversation titles, ids, and URLs.
+3. Use \`awr chat list\` to inspect locally saved aliases when you expect the target to already have an alias.
+4. Prefer an existing conversation when the task belongs to an ongoing workflow.
+5. Use \`--new\` only when a new conversation is appropriate.
+
+## Find an existing Web UI conversation
+
+Search ChatGPT's own conversation history:
+
+\`\`\`bash
+awr sessions search "realmseed"
+\`\`\`
+
+Limit the result count when useful:
+
+\`\`\`bash
+awr sessions search "farm collapse" --limit 5
+\`\`\`
+
+The command returns JSON containing \`title\`, \`conversation_id\`, and \`conversation_url\`. It does not return message bodies or assistant output.
 
 ## Send a task
 
-Existing conversation:
+Existing conversation alias:
 
 \`\`\`bash
 awr send <alias> "<task>"
+\`\`\`
+
+Existing conversation URL discovered with session search:
+
+\`\`\`bash
+awr send "https://chatgpt.com/c/<conversation-id>" "<task>"
 \`\`\`
 
 From a file:
@@ -120,7 +143,7 @@ awr send realmseed \\
 
 - Never assume the receiving model completed the task merely because delivery succeeded.
 - Never automatically resend an \`uncertain\` submission.
-- Do not use this CLI as a response-scraping API.
+- Session search may inspect ChatGPT conversation titles and URLs, but do not use this CLI as a response-scraping API.
 - Do not request cookie export, CAPTCHA bypass, rate-limit bypass, or account pooling.
 - Keep secrets out of prompts unless the user explicitly intends to send them to the target conversation.
 `;
