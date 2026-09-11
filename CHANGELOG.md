@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.3.0 - 2026-09-12
+
+- Add `awr sessions search <query>` (alias: `awr session search`) for searching ChatGPT Web conversation history.
+- Return machine-readable session metadata: conversation title, id, and URL.
+- Use ChatGPT's visible search UI instead of private/internal endpoints.
+- Keep message bodies and assistant output out of session-search results.
+- Teach generated Agent Skills to discover existing Web UI conversations before dispatching work.
+
 ## 0.2.0 - 2026-09-12
 
 - Add `awr init-skill` for installing a portable Agent Skills `SKILL.md` into the current project.
