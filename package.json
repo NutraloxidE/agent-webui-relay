@@ -1,0 +1,41 @@
+{
+  "name": "agent-webui-relay",
+  "version": "0.1.0",
+  "description": "One-way CLI relay for dispatching agent tasks to AI web interfaces with Playwright.",
+  "type": "module",
+  "bin": {
+    "agent-webui-relay": "./dist/cli.js",
+    "awr": "./dist/cli.js"
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "start": "node dist/cli.js",
+    "dev": "node --enable-source-maps dist/cli.js"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "dependencies": {
+    "commander": "^14.0.1",
+    "playwright": "^1.55.0"
+  },
+  "devDependencies": {
+    "@types/node": "^24.3.1",
+    "typescript": "^5.9.2"
+  },
+  "files": [
+    "dist",
+    "README.md",
+    "install.sh",
+    "install.ps1"
+  ],
+  "keywords": [
+    "playwright",
+    "ai",
+    "cli",
+    "automation",
+    "relay"
+  ],
+  "license": "MIT"
+}
