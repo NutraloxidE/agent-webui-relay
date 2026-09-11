@@ -3,8 +3,9 @@
 import { Command } from "commander";
 import { createHash, randomUUID } from "node:crypto";
 import { readFile } from "node:fs/promises";
-import readline from "node:readline/promises";
+import { createInterface } from "node:readline/promises";
 import { stdin as input, stdout as output } from "node:process";
+import type { BrowserContext } from "playwright";
 import { openBrowser } from "./browser.js";
 import { RelayError, errorPayload, exitCodeFor } from "./errors.js";
 import { acquireLock } from "./lock.js";
@@ -13,6 +14,7 @@ import { loadState, updateState } from "./store.js";
 import type { ConversationRecord, SubmissionRecord } from "./types.js";
 
 const provider = new ChatGPTProvider();
+const dangerousMapKeys = new Set(["__proto__", "prototype", "constructor"]);
 
 function print(value: unknown): void {
   process.stdout.write(`${JSON.stringify(value)}\n`);
@@ -26,6 +28,36 @@ function sha256(text: string): string {
   return createHash("sha256").update(text).digest("hex");
 }
 
+function validateProfileId(value: string): string {
+  if (!/^[a-zA-Z0-9._-]{1,64}$/.test(value) || value === "." || value === "..") {
+    throw new RelayError(
+      "INVALID_PROFILE_ID",
+      "Profile ids may contain only letters, numbers, dot, underscore, and hyphen.",
+      2,
+    );
+  }
+  return value;
+}
+
+function validateMapKey(value: string, label: string, maxLength = 256): string {
+  if (!value || value.length > maxLength || dangerousMapKeys.has(value)) {
+    throw new RelayError("INVALID_KEY", `Invalid ${label}.`, 2);
+  }
+  return value;
+}
+
+function validateAlias(value: string): string {
+  validateMapKey(value, "conversation alias", 64);
+  if (!/^[a-zA-Z0-9._-]+$/.test(value)) {
+    throw new RelayError(
+      "INVALID_ALIAS",
+      "Conversation aliases may contain only letters, numbers, dot, underscore, and hyphen.",
+      2,
+    );
+  }
+  return value;
+}
+
 function parseConversationUrl(url: string): { id?: string; url: string } {
   let parsed: URL;
   try {
@@ -33,7 +65,7 @@ function parseConversationUrl(url: string): { id?: string; url: string } {
   } catch {
     throw new RelayError("INVALID_CONVERSATION_URL", `Invalid URL: ${url}`, 2);
   }
-  if (parsed.hostname !== "chatgpt.com") {
+  if (parsed.protocol !== "https:" || parsed.hostname !== "chatgpt.com") {
     throw new RelayError(
       "INVALID_CONVERSATION_URL",
       "ChatGPT conversations must use https://chatgpt.com/ URLs.",
@@ -71,7 +103,8 @@ async function resolveText(
     target = undefined;
   }
 
-  const explicitInputs = Number(Boolean(inline)) + Number(Boolean(options.file)) + Number(Boolean(options.stdin));
+  const explicitInputs =
+    Number(Boolean(inline)) + Number(Boolean(options.file)) + Number(Boolean(options.stdin));
   if (explicitInputs > 1) {
     throw new RelayError("MULTIPLE_INPUTS", "Use exactly one of inline text, --file, or --stdin.", 2);
   }
@@ -107,10 +140,11 @@ program
   .description("Open a dedicated persistent browser profile and log in manually.")
   .option("--profile <id>", "profile id", "default")
   .action(async (options: { profile: string }) => {
-    const release = await acquireLock(`profile-${options.profile}`);
-    let context;
+    const profileId = validateProfileId(options.profile);
+    const release = await acquireLock(`profile-${profileId}`);
+    let context: BrowserContext | undefined;
     try {
-      const session = await openBrowser(options.profile, false);
+      const session = await openBrowser(profileId, false);
       context = session.context;
       await provider.open(session.page);
 
@@ -118,7 +152,7 @@ program
         process.stderr.write(
           "Complete login in the opened browser. When the ChatGPT composer is visible, return here and press Enter.\n",
         );
-        const rl = readline.createInterface({ input, output });
+        const rl = createInterface({ input, output });
         await rl.question("");
         rl.close();
       }
@@ -131,7 +165,7 @@ program
           10,
         );
       }
-      print({ ok: true, status: "authenticated", provider: "chatgpt", profile_id: options.profile });
+      print({ ok: true, status: "authenticated", provider: "chatgpt", profile_id: profileId });
     } finally {
       await context?.close().catch(() => undefined);
       await release();
@@ -145,13 +179,15 @@ chat
   .argument("<alias>")
   .argument("<url>")
   .option("--profile <id>", "profile id", "default")
-  .action(async (alias: string, url: string, options: { profile: string }) => {
+  .action(async (rawAlias: string, url: string, options: { profile: string }) => {
+    const alias = validateAlias(rawAlias);
+    const profileId = validateProfileId(options.profile);
     const parsed = parseConversationUrl(url);
     const timestamp = now();
     const record: ConversationRecord = {
       alias,
       provider: "chatgpt",
-      profileId: options.profile,
+      profileId,
       conversationId: parsed.id,
       conversationUrl: parsed.url,
       createdAt: timestamp,
@@ -163,17 +199,16 @@ chat
     print({ ok: true, status: "saved", conversation: record });
   });
 
-chat
-  .command("list")
-  .action(async () => {
-    const state = await loadState();
-    print({ ok: true, conversations: Object.values(state.conversations) });
-  });
+chat.command("list").action(async () => {
+  const state = await loadState();
+  print({ ok: true, conversations: Object.values(state.conversations) });
+});
 
 chat
   .command("remove")
   .argument("<alias>")
-  .action(async (alias: string) => {
+  .action(async (rawAlias: string) => {
+    const alias = validateAlias(rawAlias);
     let removed = false;
     await updateState((state) => {
       removed = Boolean(state.conversations[alias]);
@@ -198,14 +233,15 @@ program
   .option("--profile <id>", "profile id", "default")
   .option("--headed", "show the browser", false)
   .action(async (options: { profile: string; headed: boolean }) => {
-    const release = await acquireLock(`profile-${options.profile}`);
-    let context;
+    const profileId = validateProfileId(options.profile);
+    const release = await acquireLock(`profile-${profileId}`);
+    let context: BrowserContext | undefined;
     try {
-      const session = await openBrowser(options.profile, !options.headed);
+      const session = await openBrowser(profileId, !options.headed);
       context = session.context;
       await provider.open(session.page);
       const authenticated = await provider.ensureReady(session.page, 8_000);
-      print({ ok: true, provider: "chatgpt", profile_id: options.profile, authenticated });
+      print({ ok: true, provider: "chatgpt", profile_id: profileId, authenticated });
       if (!authenticated) process.exitCode = 10;
     } finally {
       await context?.close().catch(() => undefined);
@@ -219,10 +255,11 @@ program
   .option("--profile <id>", "profile id", "default")
   .option("--headed", "show the browser", false)
   .action(async (options: { profile: string; headed: boolean }) => {
-    const release = await acquireLock(`profile-${options.profile}`);
-    let context;
+    const profileId = validateProfileId(options.profile);
+    const release = await acquireLock(`profile-${profileId}`);
+    let context: BrowserContext | undefined;
     try {
-      const session = await openBrowser(options.profile, !options.headed);
+      const session = await openBrowser(profileId, !options.headed);
       context = session.context;
       await provider.open(session.page);
       const composerDetected = await provider.ensureReady(session.page, 8_000);
@@ -231,7 +268,7 @@ program
         status: composerDetected ? "ready" : "human_action_required",
         checks: {
           browser: true,
-          profile: options.profile,
+          profile: profileId,
           provider: "chatgpt",
           composer_detected: composerDetected,
         },
@@ -276,6 +313,11 @@ program
       throw new RelayError("ALIAS_REQUIRES_NEW", "--alias can only be used with --new.", 2);
     }
 
+    const newAlias = options.alias ? validateAlias(options.alias) : undefined;
+    const idempotencyKey = options.idempotencyKey
+      ? validateMapKey(options.idempotencyKey, "idempotency key", 512)
+      : undefined;
+
     const state = await loadState();
     let conversation: ConversationRecord | undefined;
     let conversationUrl: string | undefined;
@@ -284,11 +326,12 @@ program
       if (/^https?:\/\//i.test(resolved.target)) {
         conversationUrl = parseConversationUrl(resolved.target).url;
       } else {
-        conversation = state.conversations[resolved.target];
+        const alias = validateAlias(resolved.target);
+        conversation = state.conversations[alias];
         if (!conversation) {
           throw new RelayError(
             "CONVERSATION_NOT_FOUND",
-            `Unknown conversation alias: ${resolved.target}`,
+            `Unknown conversation alias: ${alias}`,
             11,
           );
         }
@@ -296,12 +339,12 @@ program
       }
     }
 
-    const profileId = options.profile ?? conversation?.profileId ?? "default";
+    const profileId = validateProfileId(options.profile ?? conversation?.profileId ?? "default");
 
-    if (options.idempotencyKey) {
-      const previousId = state.idempotency[options.idempotencyKey];
+    if (idempotencyKey) {
+      const previousId = state.idempotency[idempotencyKey];
       const previous = previousId ? state.submissions[previousId] : undefined;
-      if (previous) {
+      if (previous && ["submitted", "submit_started", "uncertain"].includes(previous.status)) {
         print({
           ok: previous.status === "submitted",
           status: previous.status === "submitted" ? "already_submitted" : previous.status,
@@ -316,7 +359,7 @@ program
     const createdAt = now();
     const submission: SubmissionRecord = {
       submissionId,
-      idempotencyKey: options.idempotencyKey,
+      idempotencyKey,
       provider: "chatgpt",
       profileId,
       conversationId: conversation?.conversationId,
@@ -330,14 +373,23 @@ program
 
     await updateState((current) => {
       current.submissions[submissionId] = submission;
-      if (options.idempotencyKey) current.idempotency[options.idempotencyKey] = submissionId;
+      if (idempotencyKey) current.idempotency[idempotencyKey] = submissionId;
     });
 
-    const release = await acquireLock(`profile-${profileId}`);
-    let context;
+    let release: (() => Promise<void>) | undefined;
+    let context: BrowserContext | undefined;
     let submitStarted = false;
 
     try {
+      try {
+        release = await acquireLock(`profile-${profileId}`);
+      } catch (error) {
+        await setSubmissionStatus(submissionId, "failed", {
+          errorCode: error instanceof RelayError ? error.code : "PROFILE_LOCK_FAILED",
+        });
+        throw error;
+      }
+
       await setSubmissionStatus(submissionId, "opening");
       const session = await openBrowser(profileId, !options.headed);
       context = session.context;
@@ -391,9 +443,9 @@ program
         });
       }
 
-      if (options.alias && options.new) {
+      if (newAlias && options.new) {
         const aliasRecord: ConversationRecord = {
-          alias: options.alias,
+          alias: newAlias,
           provider: "chatgpt",
           profileId,
           conversationId: reference.conversationId,
@@ -402,7 +454,7 @@ program
           lastUsedAt: submittedAt,
         };
         await updateState((current) => {
-          current.conversations[options.alias!] = aliasRecord;
+          current.conversations[newAlias] = aliasRecord;
         });
       }
 
@@ -412,7 +464,7 @@ program
         submission_id: submissionId,
         profile_id: profileId,
         target: {
-          conversation_alias: conversation?.alias ?? options.alias,
+          conversation_alias: conversation?.alias ?? newAlias,
           conversation_id: reference.conversationId ?? conversation?.conversationId,
           conversation_url: reference.conversationUrl,
         },
@@ -433,7 +485,7 @@ program
             { submissionId },
           );
         }
-      } else {
+      } else if (!(error instanceof RelayError && error.code === "LOGIN_REQUIRED")) {
         await setSubmissionStatus(submissionId, "failed", {
           errorCode: error instanceof RelayError ? error.code : "SUBMISSION_FAILED",
         }).catch(() => undefined);
@@ -441,7 +493,7 @@ program
       throw error;
     } finally {
       await context?.close().catch(() => undefined);
-      await release();
+      await release?.();
     }
   });
 
