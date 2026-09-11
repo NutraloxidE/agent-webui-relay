@@ -6,6 +6,8 @@
 
 **A one-way Playwright relay for agents, scripts, cron jobs, and weird automation graphs.**
 
+**English** | [日本語](./README.ja.md)
+
 [![CI](https://github.com/NutraloxidE/agent-webui-relay/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/NutraloxidE/agent-webui-relay/actions/workflows/ci.yml)
 [![Stars](https://img.shields.io/github/stars/NutraloxidE/agent-webui-relay?style=for-the-badge&logo=github)](https://github.com/NutraloxidE/agent-webui-relay/stargazers)
 [![Forks](https://img.shields.io/github/forks/NutraloxidE/agent-webui-relay?style=for-the-badge&logo=github)](https://github.com/NutraloxidE/agent-webui-relay/forks)
@@ -428,11 +430,3 @@ If an AI Web UI changes its DOM and the adapter stops seeing the composer, that'
 ## 📄 License
 
 MIT
-
-<div align="center">
-
-**If this solves an oddly specific automation problem for you, a ⭐ helps other weirdos find it.**
-
-Made for agent graphs that really should not need this many moving parts.
-
-</div>
