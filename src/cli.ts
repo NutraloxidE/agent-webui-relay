@@ -6,6 +6,7 @@ import { readFile } from "node:fs/promises";
 import { createInterface } from "node:readline/promises";
 import { stdin as input, stdout as output } from "node:process";
 import type { BrowserContext } from "playwright";
+import { initAgentSkill } from "./agent-skill.js";
 import { openBrowser } from "./browser.js";
 import { RelayError, errorPayload, exitCodeFor } from "./errors.js";
 import { acquireLock } from "./lock.js";
@@ -133,7 +134,26 @@ const program = new Command();
 program
   .name("agent-webui-relay")
   .description("One-way task relay from agents/CLI tools into AI web interfaces.")
-  .version("0.1.0");
+  .version("0.2.0");
+
+program
+  .command("init-skill")
+  .description("Install a portable Agent Skills SKILL.md into a project.")
+  .argument("[directory]", "project directory", ".")
+  .option("--force", "overwrite an existing agent-webui-relay skill", false)
+  .action(async (directory: string, options: { force: boolean }) => {
+    const result = await initAgentSkill({ directory, force: options.force });
+    print({
+      ok: true,
+      status: "installed",
+      format: "Agent Skills / SKILL.md",
+      skill: {
+        name: "agent-webui-relay",
+        path: result.displayPath,
+        absolute_path: result.skillPath,
+      },
+    });
+  });
 
 program
   .command("login")
