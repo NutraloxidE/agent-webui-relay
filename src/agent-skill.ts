@@ -1,4 +1,4 @@
-import { mkdir, writeFile } from "node:fs/promises";
+import { mkdir, stat, writeFile } from "node:fs/promises";
 import { resolve, join, relative } from "node:path";
 import { RelayError } from "./errors.js";
 
@@ -139,6 +139,29 @@ export interface InitAgentSkillResult {
 
 export async function initAgentSkill(options: InitAgentSkillOptions = {}): Promise<InitAgentSkillResult> {
   const root = resolve(options.directory ?? process.cwd());
+
+  let rootStat;
+  try {
+    rootStat = await stat(root);
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === "ENOENT") {
+      throw new RelayError(
+        "SKILL_TARGET_NOT_FOUND",
+        `Project directory does not exist: ${root}`,
+        2,
+      );
+    }
+    throw error;
+  }
+
+  if (!rootStat.isDirectory()) {
+    throw new RelayError(
+      "SKILL_TARGET_NOT_DIRECTORY",
+      `Skill target is not a directory: ${root}`,
+      2,
+    );
+  }
+
   const skillDirectory = join(root, ".agents", "skills", SKILL_NAME);
   const skillPath = join(skillDirectory, "SKILL.md");
 
