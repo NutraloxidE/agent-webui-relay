@@ -1,124 +1,151 @@
+<div align="center">
+
 # agent-webui-relay
 
-**A one-way CLI relay for dispatching agent tasks into AI web interfaces with Playwright.**
+### Dispatch agent tasks into AI Web UIs — without turning the Web UI into an API.
 
-`agent-webui-relay` intentionally automates **input**, not model output. It opens a dedicated persistent browser profile, navigates to a ChatGPT conversation, submits a task, confirms that the user message was posted, and returns submission metadata plus the conversation URL.
+**A one-way Playwright relay for agents, scripts, cron jobs, and weird automation graphs.**
 
-It does **not** scrape, stream, proxy, or return assistant responses.
+[![CI](https://github.com/NutraloxidE/agent-webui-relay/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/NutraloxidE/agent-webui-relay/actions/workflows/ci.yml)
+[![Stars](https://img.shields.io/github/stars/NutraloxidE/agent-webui-relay?style=for-the-badge&logo=github)](https://github.com/NutraloxidE/agent-webui-relay/stargazers)
+[![Forks](https://img.shields.io/github/forks/NutraloxidE/agent-webui-relay?style=for-the-badge&logo=github)](https://github.com/NutraloxidE/agent-webui-relay/forks)
+[![Issues](https://img.shields.io/github/issues/NutraloxidE/agent-webui-relay?style=for-the-badge&logo=github)](https://github.com/NutraloxidE/agent-webui-relay/issues)
+[![License](https://img.shields.io/github/license/NutraloxidE/agent-webui-relay?style=for-the-badge)](./LICENSE)
 
-> Input automation, not output extraction.
+![Node.js](https://img.shields.io/badge/Node.js-20%2B-339933?style=flat-square&logo=nodedotjs&logoColor=white)
+![TypeScript](https://img.shields.io/badge/TypeScript-5.x-3178C6?style=flat-square&logo=typescript&logoColor=white)
+![Playwright](https://img.shields.io/badge/Playwright-browser%20automation-2EAD33?style=flat-square&logo=playwright&logoColor=white)
+![Status](https://img.shields.io/badge/status-v0.1%20experimental-orange?style=flat-square)
 
-## Status
+<br />
 
-v0.1 currently ships a ChatGPT Web adapter. The provider layer is separated so other web UIs can be added later.
+> **Input automation, not output extraction.**
 
-## Requirements
+`agent-webui-relay` opens a dedicated browser profile, navigates to an AI conversation, posts a task, confirms that **your message** was submitted, and returns a machine-readable delivery receipt.
 
-- Node.js 20+
-- npm
-- A ChatGPT account you can log into interactively
+It deliberately does **not** scrape, stream, proxy, or return the assistant response.
 
-## Install
+[Quick Start](#-quick-start) · [How It Works](#-how-it-works) · [CLI](#-cli) · [Security](#-security-model) · [Architecture](#-architecture)
 
-### macOS / Linux
+</div>
+
+---
+
+## ⚡ Why this exists
+
+You already have agents that can write code, review branches, open GitHub issues, run tests, and leave artifacts behind.
+
+Sometimes the missing link is absurdly simple:
+
+> **"How does Agent A put a task into the Web UI used by Agent B?"**
+
+`agent-webui-relay` is that link.
+
+```text
+Claude / Codex / scripts / cron
+             │
+             │  task
+             ▼
+       agent-webui-relay
+             │
+             │  Playwright
+             ▼
+         ChatGPT Web
+             │
+             │  GitHub / tools / apps
+             ▼
+        work happens there
+```
+
+The relay exits after delivery. **The Web UI response is not transported back through the relay.**
+
+---
+
+## ✨ Features
+
+- **One-way task dispatch** into AI Web UIs
+- **Dedicated persistent Chromium profiles** — log in once, reuse the browser session
+- **Conversation aliases** — `realmseed` beats pasting a UUID every time
+- **Machine-readable JSON receipts** on stdout
+- **Idempotency keys** to prevent accidental duplicate jobs
+- **At-most-once delivery bias** — ambiguous sends become `uncertain`, not blindly retried
+- **Prompt privacy by default** — relay state stores a SHA-256 + character count, not the prompt body
+- **Profile locking** for concurrent callers
+- **stdin / file / inline prompt input**
+- **macOS / Linux installer** via `install.sh`
+- **Windows installer** via `install.ps1`
+- **Two commands:** `agent-webui-relay` and the much less annoying `awr`
+- Provider layer separated so additional AI Web UIs can be added later
+
+### Intentionally *not* included
+
+`agent-webui-relay` does **not** implement assistant-response scraping, response streaming, an OpenAI-compatible response API, cookie export, account pooling, CAPTCHA bypass, rate-limit bypass, or automatic challenge bypass.
+
+---
+
+## 🚀 Quick Start
+
+### 1. Clone
+
+```bash
+git clone https://github.com/NutraloxidE/agent-webui-relay.git
+cd agent-webui-relay
+```
+
+### 2. Install
+
+<table>
+<tr>
+<td><strong>macOS / Linux</strong></td>
+<td><strong>Windows PowerShell</strong></td>
+</tr>
+<tr>
+<td>
 
 ```bash
 ./install.sh
 ```
 
-### Windows PowerShell
+</td>
+<td>
 
 ```powershell
 Set-ExecutionPolicy -Scope Process Bypass
 .\install.ps1
 ```
 
-The installer installs dependencies, downloads Playwright Chromium, builds TypeScript, and installs two commands:
+</td>
+</tr>
+</table>
+
+The installer installs dependencies, downloads Playwright Chromium, builds the TypeScript project, and exposes:
 
 ```text
 agent-webui-relay
 awr
 ```
 
-If the normal global npm location is not writable, the installers fall back to a user-scoped location. The PowerShell installer adds that location to the user's PATH; the shell installer prints the PATH line if your shell does not already include it.
-
-## First login
+### 3. Log in once
 
 ```bash
 awr login
 ```
 
-A dedicated Chromium profile opens. Log into ChatGPT normally. No email address or password is stored by this project; the persistent browser profile itself holds the browser session and must be treated as a secret.
+A dedicated Chromium profile opens. Log into ChatGPT normally.
 
-Profiles are separate from your normal Chrome profile.
+**No email address or password is stored by this project.** The persistent browser profile itself contains the browser session and should be treated as a secret.
 
-Use another profile if needed:
-
-```bash
-awr login --profile work
-```
-
-## Save a conversation alias
+### 4. Save a conversation
 
 ```bash
 awr chat add realmseed https://chatgpt.com/c/<conversation-id>
 ```
 
-Then send work to it:
+### 5. Fire
 
 ```bash
 awr send realmseed "Check GitHub and execute the latest task from Claude."
 ```
-
-Or use the full URL directly:
-
-```bash
-awr send https://chatgpt.com/c/<conversation-id> "Review the latest branch."
-```
-
-## Start a new conversation
-
-```bash
-awr send --new "Investigate issue #42 and leave the result on GitHub."
-```
-
-Save the resulting conversation locally at the same time:
-
-```bash
-awr send --new --alias issue42 "Investigate issue #42."
-```
-
-The command returns the newly observed ChatGPT conversation URL when available.
-
-## Files and stdin
-
-```bash
-awr send realmseed --file task.md
-```
-
-```bash
-cat task.md | awr send realmseed --stdin
-```
-
-## Idempotency
-
-Callers can provide an idempotency key:
-
-```bash
-awr send realmseed \
-  --idempotency-key claude-issue-42-review-v1 \
-  "Review issue #42."
-```
-
-A successfully submitted key will not be submitted twice. If the browser fails after submission begins and delivery cannot be proven, the job is marked `uncertain` and blind retry is deliberately avoided.
-
-```bash
-awr status <submission-id>
-```
-
-## Machine-readable output
-
-stdout is JSON so other agents and scripts can call the CLI directly:
 
 ```json
 {
@@ -131,131 +158,281 @@ stdout is JSON so other agents and scripts can call the CLI directly:
     "conversation_id": "...",
     "conversation_url": "https://chatgpt.com/c/..."
   },
-  "submitted_at": "2026-09-12T00:00:00.000Z",
   "confirmed_by": "user_message",
   "attempt": 1
 }
 ```
 
-No assistant response body is included.
+That's the contract.
 
-## Health checks
+**Task delivered. Receipt returned. No assistant response body extracted.**
 
-Check whether the saved browser session still reaches the ChatGPT composer:
+---
+
+## 🧠 How it works
+
+The important distinction is that `agent-webui-relay` has three different identities and refuses to blur them together:
+
+| Concept | Meaning | Example |
+|---|---|---|
+| `profile_id` | Local browser/login profile | `default` |
+| `conversation_id` | Conversation in the AI Web UI | ChatGPT `/c/<id>` |
+| `submission_id` | One relay delivery attempt | UUID |
+| `idempotency_key` | Caller-defined duplicate guard | `claude-issue-42-v1` |
+
+There is intentionally **no generic `session_id`** doing five unrelated jobs.
+
+### Delivery state machine
+
+```text
+queued
+  │
+  ▼
+opening
+  │
+  ▼
+ready
+  │
+  ▼
+typing
+  │
+  ▼
+submit_started
+  ├──────────────► uncertain   # delivery may have happened; no blind retry
+  │
+  ▼
+submitted
+```
+
+Before `submit_started`, a failure is just a failure.
+
+After `submit_started`, ambiguity is dangerous. If successful delivery cannot be proven, the job becomes **`uncertain`** instead of automatically sending the same task twice.
+
+---
+
+## 🛠 CLI
+
+### Existing conversation
+
+```bash
+awr send realmseed "Review the latest branch."
+```
+
+Or use a ChatGPT conversation URL directly:
+
+```bash
+awr send https://chatgpt.com/c/<conversation-id> "Review the latest branch."
+```
+
+### New conversation
+
+```bash
+awr send --new "Investigate issue #42 and leave the result on GitHub."
+```
+
+Create it and save a local alias in one shot:
+
+```bash
+awr send --new --alias issue42 "Investigate issue #42."
+```
+
+### From a file
+
+```bash
+awr send realmseed --file task.md
+```
+
+### From stdin
+
+```bash
+cat task.md | awr send realmseed --stdin
+```
+
+### Idempotent submission
+
+```bash
+awr send realmseed \
+  --idempotency-key claude-issue-42-review-v1 \
+  "Review issue #42."
+```
+
+A successfully submitted key will not be submitted twice.
+
+### Inspect a delivery
+
+```bash
+awr status <submission-id>
+```
+
+### Authentication check
 
 ```bash
 awr auth
 ```
 
-Check browser/profile/UI readiness without sending anything:
+### UI / browser health check
 
 ```bash
 awr doctor
 ```
 
-For interactive diagnosis:
+Interactive diagnosis:
 
 ```bash
 awr doctor --headed
 ```
 
-## Local data
+---
 
-The data directory contains:
+## 👤 Profiles
 
-- dedicated Chromium profiles
-- conversation aliases
-- submission metadata
-- idempotency keys
-- short-lived lock files
+Use a separate login/browser profile when needed:
 
-The prompt body itself is **not stored** in relay state. Submissions store only its SHA-256 hash and character count.
+```bash
+awr login --profile work
+```
 
-Default data locations:
+Profiles are stored independently from your normal Chrome profile. The relay does not need access to the cookies from the browser you use for your bank, email, social media, or everything else that should absolutely stay out of an automation process.
 
-- Linux: `$XDG_DATA_HOME/agent-webui-relay` or `~/.local/share/agent-webui-relay`
-- macOS: `~/Library/Application Support/agent-webui-relay`
-- Windows: `%LOCALAPPDATA%\agent-webui-relay`
+A persistent browser profile can only be owned by one relay process at a time, so `agent-webui-relay` takes a **per-profile lock**.
 
-Override it with:
+---
+
+## 📦 Local data
+
+The relay data directory contains:
 
 ```text
+agent-webui-relay/
+├── profiles/          # dedicated Chromium profiles
+├── state.json         # aliases + submission metadata + idempotency keys
+└── locks/             # short-lived process locks
+```
+
+The prompt body itself is **not stored in relay state**. Submissions persist only its SHA-256 hash and character count.
+
+| OS | Default location |
+|---|---|
+| Linux | `$XDG_DATA_HOME/agent-webui-relay` or `~/.local/share/agent-webui-relay` |
+| macOS | `~/Library/Application Support/agent-webui-relay` |
+| Windows | `%LOCALAPPDATA%\agent-webui-relay` |
+
+Override the location with:
+
+```bash
 AGENT_WEBUI_RELAY_HOME=/path/to/data
 ```
 
-## Concurrency and delivery semantics
+---
 
-A persistent browser profile may only be owned by one relay process at a time. `agent-webui-relay` therefore takes a per-profile lock.
+## 🔐 Security model
 
-Delivery favors **at-most-once** behavior over accidental duplicate work:
+The dedicated Chromium profile is an **authentication secret**. Protect the relay data directory accordingly.
 
-```text
-queued
-  -> opening
-  -> ready
-  -> typing
-  -> submit_started
-  -> submitted
-```
+The project is deliberately boring around credentials:
 
-If failure happens before `submit_started`, the submission is `failed`.
+- passwords are not collected or stored by the CLI
+- normal browser profiles are not reused
+- cookies are not exported through a relay command
+- prompt bodies are not persisted to relay state
+- screenshots and Playwright traces are not captured by default
+- authentication challenges are handed back to a human
 
-If failure happens after `submit_started` and successful delivery cannot be confirmed, the submission becomes `uncertain` instead of being retried automatically.
+Debug artifacts, if you add or enable them yourself, may contain conversation content.
 
-## Security model
+---
 
-The dedicated browser profile is an authentication secret. Protect the relay data directory accordingly.
-
-This project intentionally does not implement:
-
-- assistant response scraping
-- response streaming
-- an OpenAI-compatible response API
-- cookie/session export
-- account pooling
-- CAPTCHA bypass
-- rate-limit bypass
-- automatic challenge bypass
-
-Debug screenshots and Playwright traces are also not captured by default because they can contain conversation content.
-
-## Architecture
+## 🏗 Architecture
 
 ```text
-Claude / Codex / scripts / cron
-             |
-             v
-     agent-webui-relay
-             |
-      profile lock + state
-             |
-         Playwright
-             |
-             v
-        ChatGPT Web
-             |
-      task executes there
-             |
-     GitHub / other tools
+                      ┌─────────────────────┐
+                      │ Claude / Codex      │
+                      │ scripts / cron / CI │
+                      └──────────┬──────────┘
+                                 │
+                                 │ CLI task
+                                 ▼
+                    ┌────────────────────────┐
+                    │   agent-webui-relay    │
+                    │                        │
+                    │  aliases              │
+                    │  idempotency          │
+                    │  profile lock         │
+                    │  delivery state       │
+                    └───────────┬────────────┘
+                                │
+                                │ Playwright
+                                ▼
+                    ┌────────────────────────┐
+                    │      AI Web UI         │
+                    │   ChatGPT (v0.1)       │
+                    └───────────┬────────────┘
+                                │
+                                │ connected tools
+                                ▼
+                    ┌────────────────────────┐
+                    │ GitHub / apps / tools  │
+                    └────────────────────────┘
 ```
 
-The relay's success condition is **task submission**, not model completion.
+The relay's definition of success is:
 
-## Exit codes
+> **The user's task was submitted to the intended conversation.**
+
+Not:
+
+> The model finished generating and we scraped its answer.
+
+That difference is the entire project.
+
+---
+
+## 🧩 Provider status
+
+| Provider | Status |
+|---|---|
+| ChatGPT Web | **v0.1 adapter** |
+| Other AI Web UIs | Provider layer ready for future adapters |
+
+The provider boundary is kept separate from CLI state and delivery semantics so additional Web UIs do not need to reinvent the relay.
+
+---
+
+## 🚦 Exit codes
 
 | Code | Meaning |
 |---:|---|
-| 0 | submitted / already submitted / successful command |
-| 2 | invalid CLI input / unknown submission |
-| 10 | login required or login not confirmed |
-| 11 | conversation alias not found |
-| 12 | composer/input preparation failed |
-| 13 | submit failed before confirmation |
-| 14 | human interaction required |
-| 15 | submission uncertain; do not blindly retry |
-| 20 | profile/lock timeout |
-| 30 | internal error |
+| `0` | submitted / already submitted / successful command |
+| `2` | invalid CLI input / unknown submission |
+| `10` | login required or login not confirmed |
+| `11` | conversation alias not found |
+| `12` | composer/input preparation failed |
+| `13` | submit failed before confirmation |
+| `14` | human interaction required |
+| `15` | submission uncertain — do not blindly retry |
+| `20` | profile/lock timeout |
+| `30` | internal error |
 
-## License
+---
+
+## 🤝 Contributing
+
+Issues, adapters, selector fixes, installer improvements, and ideas for cleaner one-way agent handoffs are welcome.
+
+If an AI Web UI changes its DOM and the adapter stops seeing the composer, that's a particularly useful issue to report.
+
+[Open an issue](https://github.com/NutraloxidE/agent-webui-relay/issues) · [View the source](https://github.com/NutraloxidE/agent-webui-relay)
+
+---
+
+## 📄 License
 
 MIT
+
+<div align="center">
+
+**If this solves an oddly specific automation problem for you, a ⭐ helps other weirdos find it.**
+
+Made for agent graphs that really should not need this many moving parts.
+
+</div>
