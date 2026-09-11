@@ -21,6 +21,12 @@ export interface ConversationRecord {
   lastUsedAt: string;
 }
 
+export interface WebSessionSearchResult {
+  title: string;
+  conversationId: string;
+  conversationUrl: string;
+}
+
 export interface SubmissionRecord {
   submissionId: string;
   idempotencyKey?: string;
