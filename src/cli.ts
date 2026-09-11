@@ -134,7 +134,7 @@ const program = new Command();
 program
   .name("agent-webui-relay")
   .description("One-way task relay from agents/CLI tools into AI web interfaces.")
-  .version("0.2.0");
+  .version("0.3.0");
 
 program
   .command("init-skill")
@@ -235,6 +235,65 @@ chat
       delete state.conversations[alias];
     });
     print({ ok: true, status: removed ? "removed" : "not_found", alias });
+  });
+
+const sessions = program
+  .command("sessions")
+  .alias("session")
+  .description("Search ChatGPT Web conversation history.");
+
+sessions
+  .command("search")
+  .description("Search ChatGPT Web sessions and return conversation references as JSON.")
+  .argument("<query...>", "chat-history search terms")
+  .option("--profile <id>", "profile id", "default")
+  .option("--limit <n>", "maximum results (1-100)", "20")
+  .option("--headed", "show the browser", false)
+  .action(async (
+    queryParts: string[],
+    options: { profile: string; limit: string; headed: boolean },
+  ) => {
+    const query = queryParts.join(" ").trim();
+    if (!query) throw new RelayError("EMPTY_SESSION_QUERY", "Session search query cannot be empty.", 2);
+
+    const limit = Number.parseInt(options.limit, 10);
+    if (!Number.isInteger(limit) || limit < 1 || limit > 100) {
+      throw new RelayError("INVALID_LIMIT", "--limit must be an integer between 1 and 100.", 2);
+    }
+
+    const profileId = validateProfileId(options.profile);
+    const release = await acquireLock(`profile-${profileId}`);
+    let context: BrowserContext | undefined;
+    try {
+      const browserSession = await openBrowser(profileId, !options.headed);
+      context = browserSession.context;
+      await provider.open(browserSession.page);
+
+      if (!(await provider.ensureReady(browserSession.page, 10_000))) {
+        throw new RelayError(
+          "LOGIN_REQUIRED",
+          "ChatGPT is unavailable for this profile. Run `awr login` first.",
+          10,
+        );
+      }
+
+      const results = await provider.searchSessions(browserSession.page, query, { limit });
+      print({
+        ok: true,
+        provider: "chatgpt",
+        profile_id: profileId,
+        query,
+        count: results.length,
+        sessions: results.map((result) => ({
+          title: result.title,
+          conversation_id: result.conversationId,
+          conversation_url: result.conversationUrl,
+        })),
+      });
+    } finally {
+      await context?.close().catch(() => undefined);
+      await release();
+    }
   });
 
 program
