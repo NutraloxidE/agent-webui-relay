@@ -85,6 +85,16 @@ Claude / Codex / scripts / cron
 
 `agent-webui-relay` は、assistant responseのスクレイピング、response streaming、OpenAI互換response API、cookie export、account pooling、CAPTCHA bypass、rate-limit bypass、challengeの自動回避を実装しません。
 
+### ⚠️ 非公式・非サポートの統合経路
+
+このプロジェクトは、**OpenAIに承認・認可されたChatGPT統合経路ではありません。**
+
+OpenAIのAI支援サポートは、このツール個別について法的なyes/noを出していません。メンテナへ返された回答では、ChatGPT Web UIのブラウザ自動化はsanctioned integration pathではなく、自動化の正規経路は公式APIであり、この種のブラウザ自動化はconsumer Terms上のdisallowed automated accessとして扱われる可能性がある、という整理でした。
+
+モデルOutputを抽出しない設計は一つのリスク領域を減らしますが、**それだけでWeb UI自動化が許可されたことにはなりません。** このプロジェクトは非公式・非サポートです。その前提を理解し、自己責任で利用してください。
+
+このプロジェクトについて、**OpenAIに認められた、アカウント措置を受けないことが確認された、あるいはassistant responseをスクレイプしないから許可されている**とは表現しないでください。
+
 ---
 
 ## 🚀 クイックスタート
