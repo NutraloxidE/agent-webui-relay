@@ -1,7 +1,7 @@
 import type { Locator, Page } from "playwright";
 import { RelayError } from "../errors.js";
 import type { AIWebProvider, CommitResult } from "./types.js";
-import type { ConversationReference } from "../types.js";
+import type { ConversationReference, WebSessionSearchResult } from "../types.js";
 
 async function sleep(ms: number): Promise<void> {
   await new Promise((resolve) => setTimeout(resolve, ms));
@@ -9,6 +9,14 @@ async function sleep(ms: number): Promise<void> {
 
 function normalize(text: string): string {
   return text.replace(/\s+/g, " ").trim();
+}
+
+function firstNonEmptyLine(text: string): string {
+  for (const line of text.split(/\r?\n/)) {
+    const value = normalize(line);
+    if (value) return value;
+  }
+  return "";
 }
 
 export class ChatGPTProvider implements AIWebProvider {
@@ -25,7 +33,7 @@ export class ChatGPTProvider implements AIWebProvider {
   private async composer(page: Page): Promise<Locator | null> {
     const candidates = [
       page.locator("#prompt-textarea:visible").first(),
-      page.locator('textarea:visible').first(),
+      page.locator("textarea:visible").first(),
       page.locator('[contenteditable="true"][data-lexical-editor="true"]:visible').first(),
       page.locator('[contenteditable="true"]:visible').first(),
     ];
@@ -57,6 +65,115 @@ export class ChatGPTProvider implements AIWebProvider {
       }
     }
     return null;
+  }
+
+  private async searchInput(page: Page): Promise<Locator | null> {
+    const dialog = page.locator('[role="dialog"]:visible').last();
+    const candidates = [
+      dialog.getByRole("textbox").first(),
+      page.locator('input[type="search"]:visible').first(),
+      page.locator('input[placeholder*="Search"]:visible').first(),
+      page.locator('input[placeholder*="search"]:visible').first(),
+      page.locator('input[placeholder*="検索"]:visible').first(),
+    ];
+
+    for (const candidate of candidates) {
+      try {
+        if ((await candidate.count()) > 0 && (await candidate.isVisible())) return candidate;
+      } catch {
+        // Try the next resilient locator.
+      }
+    }
+    return null;
+  }
+
+  private async waitForSearchInput(page: Page, timeoutMs: number): Promise<Locator | null> {
+    const started = Date.now();
+    while (Date.now() - started < timeoutMs) {
+      const input = await this.searchInput(page);
+      if (input) return input;
+      await sleep(150);
+    }
+    return null;
+  }
+
+  private async openSessionSearch(page: Page, timeoutMs: number): Promise<Locator> {
+    const shortcut = process.platform === "darwin" ? "Meta+KeyK" : "Control+KeyK";
+    await page.keyboard.press(shortcut).catch(() => undefined);
+
+    let input = await this.waitForSearchInput(page, Math.min(timeoutMs, 3_000));
+    if (input) return input;
+
+    const triggers = [
+      page.getByRole("button", { name: /search/i }).first(),
+      page.getByRole("button", { name: /検索/ }).first(),
+      page.getByRole("link", { name: /search/i }).first(),
+      page.getByRole("link", { name: /検索/ }).first(),
+      page.locator('button[aria-label*="Search"]:visible').first(),
+      page.locator('button[aria-label*="検索"]:visible').first(),
+    ];
+
+    for (const trigger of triggers) {
+      try {
+        if ((await trigger.count()) === 0 || !(await trigger.isVisible())) continue;
+        await trigger.click({ timeout: 2_000 });
+        input = await this.waitForSearchInput(page, Math.min(timeoutMs, 3_000));
+        if (input) return input;
+      } catch {
+        // Keep trying resilient search entry points.
+      }
+    }
+
+    throw new RelayError(
+      "SESSION_SEARCH_UNAVAILABLE",
+      "Could not open ChatGPT chat-history search. The Web UI may have changed.",
+      12,
+    );
+  }
+
+  private async collectSessionSearchResults(
+    page: Page,
+    limit: number,
+  ): Promise<WebSessionSearchResult[]> {
+    const visibleDialog = page.locator('[role="dialog"]:visible').last();
+    const hasDialog = (await visibleDialog.count()) > 0 && (await visibleDialog.isVisible()).catch(() => false);
+    const scope = hasDialog ? visibleDialog : page.locator("body");
+    const links = scope.locator('a[href*="/c/"]:visible');
+    const count = Math.min(await links.count(), limit * 3);
+    const seen = new Set<string>();
+    const results: WebSessionSearchResult[] = [];
+
+    for (let index = 0; index < count && results.length < limit; index += 1) {
+      const link = links.nth(index);
+      const href = await link.getAttribute("href").catch(() => null);
+      if (!href) continue;
+
+      let url: URL;
+      try {
+        url = new URL(href, this.homeUrl);
+      } catch {
+        continue;
+      }
+
+      if (url.hostname !== "chatgpt.com") continue;
+      const match = /\/c\/([^/?#]+)/.exec(url.pathname);
+      if (!match || seen.has(match[1])) continue;
+
+      const rawText = await link.innerText().catch(() => "");
+      const titleAttribute = (await link.getAttribute("title").catch(() => null)) ?? "";
+      const ariaLabel = (await link.getAttribute("aria-label").catch(() => null)) ?? "";
+      const title =
+        firstNonEmptyLine(rawText) || normalize(titleAttribute) || normalize(ariaLabel) || match[1];
+
+      seen.add(match[1]);
+      results.push({
+        title,
+        conversationId: match[1],
+        conversationUrl: url.toString(),
+      });
+    }
+
+    return results;
   }
 
   private async composerText(locator: Locator): Promise<string> {
@@ -154,5 +271,42 @@ export class ChatGPTProvider implements AIWebProvider {
       conversationId: match?.[1],
       conversationUrl: url,
     };
+  }
+
+  async searchSessions(
+    page: Page,
+    query: string,
+    options: { limit?: number; timeoutMs?: number } = {},
+  ): Promise<WebSessionSearchResult[]> {
+    const cleanQuery = normalize(query);
+    if (!cleanQuery) {
+      throw new RelayError("EMPTY_SESSION_QUERY", "Session search query cannot be empty.", 2);
+    }
+
+    const limit = Math.max(1, Math.min(options.limit ?? 20, 100));
+    const timeoutMs = options.timeoutMs ?? 12_000;
+    const input = await this.openSessionSearch(page, timeoutMs);
+    await input.fill(cleanQuery, { timeout: 5_000 });
+
+    const started = Date.now();
+    let best: WebSessionSearchResult[] = [];
+    let lastFingerprint = "";
+    let stableSince = Date.now();
+
+    while (Date.now() - started < timeoutMs) {
+      const current = await this.collectSessionSearchResults(page, limit);
+      const fingerprint = current.map((item) => item.conversationId).join("|");
+
+      if (current.length >= best.length) best = current;
+      if (fingerprint !== lastFingerprint) {
+        lastFingerprint = fingerprint;
+        stableSince = Date.now();
+      }
+
+      if (current.length > 0 && Date.now() - stableSince >= 700) return current;
+      await sleep(150);
+    }
+
+    return best;
   }
 }
