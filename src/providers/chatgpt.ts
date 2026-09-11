@@ -136,7 +136,10 @@ export class ChatGPTProvider implements AIWebProvider {
     limit: number,
   ): Promise<WebSessionSearchResult[]> {
     const visibleDialog = page.locator('[role="dialog"]:visible').last();
-    const hasDialog = (await visibleDialog.count()) > 0 && (await visibleDialog.isVisible()).catch(() => false);
+    let hasDialog = false;
+    if ((await visibleDialog.count()) > 0) {
+      hasDialog = await visibleDialog.isVisible().catch(() => false);
+    }
     const scope = hasDialog ? visibleDialog : page.locator("body");
     const links = scope.locator('a[href*="/c/"]:visible');
     const count = Math.min(await links.count(), limit * 3);
