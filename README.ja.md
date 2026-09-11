@@ -17,7 +17,8 @@
 ![Node.js](https://img.shields.io/badge/Node.js-20%2B-339933?style=flat-square&logo=nodedotjs&logoColor=white)
 ![TypeScript](https://img.shields.io/badge/TypeScript-5.x-3178C6?style=flat-square&logo=typescript&logoColor=white)
 ![Playwright](https://img.shields.io/badge/Playwright-browser%20automation-2EAD33?style=flat-square&logo=playwright&logoColor=white)
-![Status](https://img.shields.io/badge/status-v0.1%20experimental-orange?style=flat-square)
+![Agent Skills](https://img.shields.io/badge/Agent%20Skills-SKILL.md-7C3AED?style=flat-square)
+![Status](https://img.shields.io/badge/status-v0.2%20experimental-orange?style=flat-square)
 
 <br />
 
@@ -27,7 +28,7 @@
 
 アシスタントの返答をスクレイピング・ストリーミング・プロキシ・返却する機能は、意図的に実装していません。
 
-[クイックスタート](#-クイックスタート) · [仕組み](#-仕組み) · [CLI](#-cli) · [セキュリティ](#-セキュリティモデル) · [アーキテクチャ](#-アーキテクチャ)
+[クイックスタート](#-クイックスタート) · [Agent Skill](#-agent-skillを追加する) · [仕組み](#-仕組み) · [CLI](#-cli) · [セキュリティ](#-セキュリティモデル) · [アーキテクチャ](#-アーキテクチャ)
 
 </div>
 
@@ -66,6 +67,7 @@ Claude / Codex / scripts / cron
 ## ✨ 特徴
 
 - AI Web UIへの**一方向タスク配送**
+- `awr init-skill` による**portable Agent Skills導入**
 - **専用persistent Chromium profile** — 一度ログインして、そのセッションを再利用
 - **会話alias** — UUIDを毎回貼る代わりに `realmseed` のような名前で指定
 - stdoutに**機械可読JSON receipt**を出力
@@ -79,9 +81,9 @@ Claude / Codex / scripts / cron
 - 長い `agent-webui-relay` と、短い **`awr`** の両方を利用可能
 - provider層を分離し、将来ほかのAI Web UI adapterを追加可能
 
-### 意図的に実装していないもの
+### 意図的に実装しないもの
 
-`agent-webui-relay` は、assistant response scraping、response streaming、OpenAI互換response API、cookie export、account pooling、CAPTCHA回避、rate-limit回避、自動challenge回避を実装しません。
+`agent-webui-relay` は、assistant responseのスクレイピング、response streaming、OpenAI互換response API、cookie export、account pooling、CAPTCHA bypass、rate-limit bypass、challengeの自動回避を実装しません。
 
 ---
 
@@ -120,7 +122,7 @@ Set-ExecutionPolicy -Scope Process Bypass
 </tr>
 </table>
 
-installerは依存関係を導入し、Playwright Chromiumをダウンロードし、TypeScriptをbuildして次のコマンドを使えるようにします。
+インストーラは依存関係、Playwright Chromium、TypeScript buildを処理し、次の2コマンドを使えるようにします。
 
 ```text
 agent-webui-relay
@@ -133,21 +135,45 @@ awr
 awr login
 ```
 
-専用Chromium profileが開きます。通常どおりChatGPTへログインしてください。
+専用Chromium profileが開くので、通常通りChatGPTへログインします。
 
-**このプロジェクトはメールアドレスやパスワードを保存しません。** 認証状態はpersistent browser profileそのものに残るため、そのディレクトリ自体を秘密情報として扱ってください。
+**メールアドレスやパスワードはこのプロジェクトでは保存しません。** persistent browser profile自体が認証情報を含むため、秘密として扱ってください。
 
-### 4. 会話へaliasを付ける
+### 4. 今いるrepoのagentに使い方を教える
+
+agentが作業するprojectへ移動して、
+
+```bash
+cd /path/to/your-project
+awr init-skill
+```
+
+すると、
+
+```text
+.agents/
+└── skills/
+    └── agent-webui-relay/
+        └── SKILL.md
+```
+
+が生成されます。
+
+生成されるskillはportable Agent Skillsの`SKILL.md`形式で、`name` / `description` のYAML frontmatterと、agentが`awr`を安全に扱うための実務手順を含みます。
+
+### 5. 会話aliasを保存
 
 ```bash
 awr chat add realmseed https://chatgpt.com/c/<conversation-id>
 ```
 
-### 5. 撃つ
+### 6. 撃つ
 
 ```bash
 awr send realmseed "GitHubを確認してClaudeから来ている最新タスクを実行して"
 ```
+
+返るのは回答本文ではなく、配送receiptです。
 
 ```json
 {
@@ -165,24 +191,74 @@ awr send realmseed "GitHubを確認してClaudeから来ている最新タスク
 }
 ```
 
-これが契約です。
+**仕事を届ける。receiptを返す。assistant response本文は抽出しない。**
 
-**仕事を届ける。配送receiptを返す。assistant response本文は抽出しない。**
+---
+
+## 🧩 Agent Skillを追加する
+
+`v0.2` では、このCLI自身の使い方をportable Agent Skillとしてprojectへ導入できます。
+
+agentが作業するproject内で、
+
+```bash
+awr init-skill
+```
+
+デフォルトの生成先は、
+
+```text
+./.agents/skills/agent-webui-relay/SKILL.md
+```
+
+別projectを指定することもできます。
+
+```bash
+awr init-skill ../other-project
+```
+
+既存skillは勝手に上書きしません。
+
+```bash
+awr init-skill
+# -> SKILL_ALREADY_EXISTS
+```
+
+本当に更新したい場合のみ、
+
+```bash
+awr init-skill --force
+```
+
+を使います。
+
+生成されるskillはagentへ次を教えます。
+
+- `awr doctor` でbrowser/login状態を確認
+- `awr chat list` で既存aliasを確認
+- inline / file / stdin / new conversationでタスク配送
+- 再試行されうるlogical jobにはstableなidempotency keyを使う
+- `submitted` を**完了**ではなく**配送済み**として扱う
+- `uncertain` を自動再送しない
+- 認証が必要なら人間へ `awr login` を依頼
+- GitHub commit / Issue / PR comment / fileなど、両agentが読めるdurable outputを指定する
+
+skillには認証情報やcookieは入りません。**使い方だけがprojectへ入ります。**
 
 ---
 
 ## 🧠 仕組み
 
-`agent-webui-relay` は次の識別子を明確に分けます。
+`agent-webui-relay` は、似ているけれど別物なIDを混ぜません。
 
 | 概念 | 意味 | 例 |
 |---|---|---|
-| `profile_id` | ローカルのブラウザ / ログインprofile | `default` |
+| `profile_id` | ローカルのbrowser/login profile | `default` |
 | `conversation_id` | AI Web UI上の会話 | ChatGPT `/c/<id>` |
-| `submission_id` | リレーによる一回の配送試行 | UUID |
-| `idempotency_key` | callerが指定する二重実行防止キー | `claude-issue-42-v1` |
+| `submission_id` | 一回の配送試行 | UUID |
+| `idempotency_key` | callerが決める二重送信防止key | `claude-issue-42-v1` |
 
-何でもかんでも押し込む汎用 `session_id` は、意図的に作っていません。
+何でもかんでも`session_id`と呼ぶ設計にはしていません。
 
 ### 配送state machine
 
@@ -200,45 +276,59 @@ typing
   │
   ▼
 submit_started
-  ├──────────────► uncertain   # 届いた可能性があるためblind retryしない
+  ├──────────────► uncertain   # 送信された可能性あり。blind retry禁止
   │
   ▼
 submitted
 ```
 
-`submit_started` より前の失敗は、ただの失敗です。
+`submit_started` より前なら普通のfailureです。
 
-`submit_started` より後は違います。実際には届いている可能性があるため、配送成功を証明できない場合は自動的に同じタスクをもう一度送らず、**`uncertain`** にします。
+`submit_started` より後は話が変わります。配送成功を証明できない場合、同じ仕事を二回投げるより **`uncertain`** に倒します。
 
 ---
 
 ## 🛠 CLI
 
-### 既存の会話へ送る
+### portable Agent Skillを追加
+
+```bash
+awr init-skill
+```
+
+```bash
+awr init-skill ../other-project
+```
+
+```bash
+awr init-skill --force
+```
+
+### 既存会話へ送る
 
 ```bash
 awr send realmseed "最新branchをレビューして"
 ```
 
-ChatGPT conversation URLを直接指定することもできます。
+URL直指定も可能です。
 
 ```bash
 awr send https://chatgpt.com/c/<conversation-id> "最新branchをレビューして"
 ```
 
-### 新しい会話を作る
+### 新規会話
 
 ```bash
 awr send --new "Issue #42を調査して結果をGitHubへ残して"
 ```
 
-作成と同時にローカルaliasを保存する場合:
+新規会話を作りつつaliasも保存できます。
 
 ```bash
 awr send --new --alias issue42 "Issue #42を調査して"
 ```
 
-### ファイルから送る
+### fileから送る
 
 ```bash
 awr send realmseed --file task.md
@@ -250,7 +340,7 @@ awr send realmseed --file task.md
 cat task.md | awr send realmseed --stdin
 ```
 
-### idempotentな送信
+### idempotency付き
 
 ```bash
 awr send realmseed \
@@ -258,27 +348,25 @@ awr send realmseed \
   "Issue #42をレビューして"
 ```
 
-一度正常に送信されたキーは二重送信されません。
-
-### 配送状態を見る
+### 配送状態確認
 
 ```bash
 awr status <submission-id>
 ```
 
-### 認証状態を確認
+### 認証確認
 
 ```bash
 awr auth
 ```
 
-### UI / browser health check
+### browser / UI health check
 
 ```bash
 awr doctor
 ```
 
-画面を表示して診断する場合:
+画面を出して診断する場合、
 
 ```bash
 awr doctor --headed
@@ -288,30 +376,28 @@ awr doctor --headed
 
 ## 👤 Profiles
 
-別のログイン / browser profileを使う場合:
+別login/browser profileを使う場合、
 
 ```bash
 awr login --profile work
 ```
 
-profileは普段使いのChrome profileとは完全に別に保存されます。銀行・メール・SNSなどの日常ブラウザCookieをautomation processへ渡す必要はありません。
+profileは普段使っているChromeとは分離されます。銀行、メール、SNSなどのcookieまでautomation processへ渡す必要はありません。
 
-persistent browser profileは同時に一つのrelay processだけが所有できるため、`agent-webui-relay` は**profile単位でlock**を取得します。
+同じpersistent browser profileを複数processで同時所有できないため、`agent-webui-relay` はprofileごとにlockを取ります。
 
 ---
 
 ## 📦 ローカルデータ
 
-データディレクトリは次のような構成です。
-
 ```text
 agent-webui-relay/
 ├── profiles/          # 専用Chromium profiles
 ├── state.json         # aliases + submission metadata + idempotency keys
-└── locks/             # 短命なprocess lock
+└── locks/             # process locks
 ```
 
-prompt本文は**relay stateへ保存されません**。submissionにはSHA-256 hashと文字数だけを保存します。
+prompt本文そのものはrelay stateへ保存しません。保存するのはSHA-256と文字数です。
 
 | OS | デフォルト保存先 |
 |---|---|
@@ -319,7 +405,7 @@ prompt本文は**relay stateへ保存されません**。submissionにはSHA-256
 | macOS | `~/Library/Application Support/agent-webui-relay` |
 | Windows | `%LOCALAPPDATA%\agent-webui-relay` |
 
-保存先を変更する場合:
+変更する場合、
 
 ```bash
 AGENT_WEBUI_RELAY_HOME=/path/to/data
@@ -329,18 +415,17 @@ AGENT_WEBUI_RELAY_HOME=/path/to/data
 
 ## 🔐 セキュリティモデル
 
-専用Chromium profileは**認証情報そのもの**として扱ってください。relay data directoryを適切に保護してください。
+専用Chromium profileは**認証secret**です。relay data directoryを適切に保護してください。
 
-認証情報まわりは意図的に退屈な設計にしています。
+credential周りは意図的に地味にしています。
 
-- CLIはパスワードを収集・保存しない
+- passwordをCLIが収集・保存しない
 - 普段使いのbrowser profileを再利用しない
-- relay commandからcookieをexportしない
-- prompt本文をrelay stateへ永続化しない
-- screenshot / Playwright traceをデフォルトでは保存しない
-- authentication challengeは人間へ返す
-
-自分でdebug artifactを有効化した場合、それらには会話内容が含まれる可能性があります。
+- cookieをrelay commandでexportしない
+- prompt本文をrelay stateへ保存しない
+- screenshot / Playwright traceをデフォルト保存しない
+- 認証challengeは人間へ返す
+- `awr init-skill` が生成するのは運用手順だけで、credentialは含めない
 
 ---
 
@@ -352,7 +437,8 @@ AGENT_WEBUI_RELAY_HOME=/path/to/data
                       │ scripts / cron / CI │
                       └──────────┬──────────┘
                                  │
-                                 │ CLI task
+                  .agents/skills │  使い方を教える
+                                 │
                                  ▼
                     ┌────────────────────────┐
                     │   agent-webui-relay    │
@@ -367,7 +453,7 @@ AGENT_WEBUI_RELAY_HOME=/path/to/data
                                 ▼
                     ┌────────────────────────┐
                     │      AI Web UI         │
-                    │   ChatGPT (v0.1)       │
+                    │   ChatGPT adapter      │
                     └───────────┬────────────┘
                                 │
                                 │ connected tools
@@ -377,28 +463,26 @@ AGENT_WEBUI_RELAY_HOME=/path/to/data
                     └────────────────────────┘
 ```
 
-relayが成功と定義するのは、
+relayにとっての成功条件は、
 
-> **ユーザーのタスクが、意図した会話へ投稿された。**
+> **ユーザーのtaskが、意図したconversationへ投稿された。**
 
-という状態です。
+です。
 
-次ではありません。
+> modelが生成を終えて、その回答をscrapeできた。
 
-> モデルが生成を完了し、その答えをスクレイピングできた。
+ではありません。
 
-この違いが、このプロジェクトそのものです。
+**この差がプロジェクトの全部です。**
 
 ---
 
-## 🧩 Provider status
+## 🧩 Provider状況
 
-| Provider | Status |
+| Provider | 状況 |
 |---|---|
-| ChatGPT Web | **v0.1 adapter** |
+| ChatGPT Web | **adapterあり** |
 | その他AI Web UI | 将来adapterを追加できるprovider layerあり |
-
-provider境界はCLI stateやdelivery semanticsから分離しています。そのため別Web UIを追加するときもrelay自体を作り直す必要はありません。
 
 ---
 
@@ -407,23 +491,23 @@ provider境界はCLI stateやdelivery semanticsから分離しています。そ
 | Code | 意味 |
 |---:|---|
 | `0` | submitted / already submitted / command成功 |
-| `2` | CLI入力不正 / submission不明 |
+| `2` | CLI入力不正 / submission不明 / skill既存 |
 | `10` | login required / login未確認 |
 | `11` | conversation aliasが見つからない |
-| `12` | composer / input準備に失敗 |
-| `13` | confirmation前にsubmit失敗 |
-| `14` | 人間による操作が必要 |
+| `12` | composer/input準備失敗 |
+| `13` | confirmation前のsubmit失敗 |
+| `14` | human interaction required |
 | `15` | submission uncertain — blind retry禁止 |
-| `20` | profile / lock timeout |
+| `20` | profile/lock timeout |
 | `30` | internal error |
 
 ---
 
 ## 🤝 Contributing
 
-Issue、adapter追加、selector修正、installer改善、より綺麗な一方向agent handoffのアイデアを歓迎します。
+Issue、adapter、selector修正、installer改善、Agent Skill改善、一方向agent handoffをもっと綺麗にするアイデアを歓迎します。
 
-AI Web UI側のDOM変更でcomposerを見つけられなくなった場合も、かなりありがたいIssueです。
+AI Web UIのDOM変更でcomposerを見失った場合も、有用なIssueです。
 
 [Issueを開く](https://github.com/NutraloxidE/agent-webui-relay/issues) · [ソースを見る](https://github.com/NutraloxidE/agent-webui-relay)
 
