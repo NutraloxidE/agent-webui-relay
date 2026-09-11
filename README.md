@@ -85,6 +85,16 @@ The relay exits after delivery. **The Web UI response is not transported back th
 
 `agent-webui-relay` does **not** implement assistant-response scraping, response streaming, an OpenAI-compatible response API, cookie export, account pooling, CAPTCHA bypass, rate-limit bypass, or automatic challenge bypass.
 
+### ⚠️ Unsupported / unofficial integration
+
+This project is **not an approved or sanctioned ChatGPT integration path**.
+
+OpenAI support (AI-assisted) would not provide a tool-specific legal yes/no. The response provided to the maintainer said that browser automation of the ChatGPT Web UI is not a sanctioned integration path, that the official API is the supported path for automation, and that this kind of browser automation may be treated as disallowed automated access under the consumer Terms.
+
+Not extracting model Output reduces one category of risk; it does **not** mean that Web UI automation has been approved. This project is unofficial and unsupported. Use it with that understanding and at your own risk.
+
+Do **not** describe this project as OpenAI-approved, as confirmed-safe from account enforcement, or as permitted merely because it does not scrape assistant responses.
+
 ---
 
 ## 🚀 Quick Start
