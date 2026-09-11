@@ -16,8 +16,9 @@ function isProcessAlive(pid: number): boolean {
   try {
     process.kill(pid, 0);
     return true;
-  } catch {
-    return false;
+  } catch (error) {
+    // EPERM still means a process exists; we just do not have permission to signal it.
+    return (error as NodeJS.ErrnoException).code === "EPERM";
   }
 }
 
@@ -25,8 +26,7 @@ async function clearStaleLock(file: string): Promise<boolean> {
   try {
     const raw = await readFile(file, "utf8");
     const data = JSON.parse(raw) as LockData;
-    const ageMs = Date.now() - Date.parse(data.createdAt);
-    if (!isProcessAlive(data.pid) || ageMs > 10 * 60_000) {
+    if (!Number.isInteger(data.pid) || data.pid <= 0 || !isProcessAlive(data.pid)) {
       await unlink(file).catch(() => undefined);
       return true;
     }
