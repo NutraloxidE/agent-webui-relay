@@ -17,7 +17,8 @@
 ![Node.js](https://img.shields.io/badge/Node.js-20%2B-339933?style=flat-square&logo=nodedotjs&logoColor=white)
 ![TypeScript](https://img.shields.io/badge/TypeScript-5.x-3178C6?style=flat-square&logo=typescript&logoColor=white)
 ![Playwright](https://img.shields.io/badge/Playwright-browser%20automation-2EAD33?style=flat-square&logo=playwright&logoColor=white)
-![Status](https://img.shields.io/badge/status-v0.1%20experimental-orange?style=flat-square)
+![Agent Skills](https://img.shields.io/badge/Agent%20Skills-SKILL.md-7C3AED?style=flat-square)
+![Status](https://img.shields.io/badge/status-v0.2%20experimental-orange?style=flat-square)
 
 <br />
 
@@ -27,7 +28,7 @@
 
 It deliberately does **not** scrape, stream, proxy, or return the assistant response.
 
-[Quick Start](#-quick-start) · [How It Works](#-how-it-works) · [CLI](#-cli) · [Security](#-security-model) · [Architecture](#-architecture)
+[Quick Start](#-quick-start) · [Agent Skill](#-install-the-agent-skill) · [How It Works](#-how-it-works) · [CLI](#-cli) · [Security](#-security-model) · [Architecture](#-architecture)
 
 </div>
 
@@ -66,6 +67,7 @@ The relay exits after delivery. **The Web UI response is not transported back th
 ## ✨ Features
 
 - **One-way task dispatch** into AI Web UIs
+- **Portable Agent Skills installer** via `awr init-skill`
 - **Dedicated persistent Chromium profiles** — log in once, reuse the browser session
 - **Conversation aliases** — `realmseed` beats pasting a UUID every time
 - **Machine-readable JSON receipts** on stdout
@@ -137,13 +139,33 @@ A dedicated Chromium profile opens. Log into ChatGPT normally.
 
 **No email address or password is stored by this project.** The persistent browser profile itself contains the browser session and should be treated as a secret.
 
-### 4. Save a conversation
+### 4. Teach the current repo's agent how to use it
+
+From the project where your agent works:
+
+```bash
+cd /path/to/your-project
+awr init-skill
+```
+
+This creates:
+
+```text
+.agents/
+└── skills/
+    └── agent-webui-relay/
+        └── SKILL.md
+```
+
+The generated skill follows the portable Agent Skills `SKILL.md` format: YAML frontmatter with `name` and `description`, followed by the operational instructions an agent needs to use `awr` safely.
+
+### 5. Save a conversation
 
 ```bash
 awr chat add realmseed https://chatgpt.com/c/<conversation-id>
 ```
 
-### 5. Fire
+### 6. Fire
 
 ```bash
 awr send realmseed "Check GitHub and execute the latest task from Claude."
@@ -168,6 +190,56 @@ awr send realmseed "Check GitHub and execute the latest task from Claude."
 That's the contract.
 
 **Task delivered. Receipt returned. No assistant response body extracted.**
+
+---
+
+## 🧩 Install the Agent Skill
+
+`v0.2` can install its own usage instructions into any project that uses the portable Agent Skills directory convention.
+
+Run this **inside the project the agent is working on**:
+
+```bash
+awr init-skill
+```
+
+Default output:
+
+```text
+./.agents/skills/agent-webui-relay/SKILL.md
+```
+
+Install into another project:
+
+```bash
+awr init-skill ../other-project
+```
+
+The command refuses to replace an existing skill:
+
+```bash
+awr init-skill
+# -> SKILL_ALREADY_EXISTS
+```
+
+Overwrite only when you actually mean it:
+
+```bash
+awr init-skill --force
+```
+
+The generated skill teaches an agent to:
+
+- check readiness with `awr doctor`
+- inspect aliases with `awr chat list`
+- submit inline, file, stdin, or new-conversation tasks
+- use stable idempotency keys for retryable logical jobs
+- treat `submitted` as **delivered**, not **completed**
+- never blindly retry `uncertain`
+- request `awr login` when human authentication is required
+- prefer durable handoff outputs such as GitHub commits, issues, PR comments, or files
+
+The skill is intentionally about **using the relay**, not embedding provider-specific secrets or login state into the project.
 
 ---
 
@@ -213,6 +285,20 @@ After `submit_started`, ambiguity is dangerous. If successful delivery cannot be
 ---
 
 ## 🛠 CLI
+
+### Initialize the portable Agent Skill
+
+```bash
+awr init-skill
+```
+
+```bash
+awr init-skill ../other-project
+```
+
+```bash
+awr init-skill --force
+```
 
 ### Existing conversation
 
@@ -339,6 +425,7 @@ The project is deliberately boring around credentials:
 - prompt bodies are not persisted to relay state
 - screenshots and Playwright traces are not captured by default
 - authentication challenges are handed back to a human
+- generated Agent Skills contain operational guidance, **not credentials**
 
 Debug artifacts, if you add or enable them yourself, may contain conversation content.
 
@@ -352,7 +439,8 @@ Debug artifacts, if you add or enable them yourself, may contain conversation co
                       │ scripts / cron / CI │
                       └──────────┬──────────┘
                                  │
-                                 │ CLI task
+                  .agents/skills │  teaches usage
+                                 │
                                  ▼
                     ┌────────────────────────┐
                     │   agent-webui-relay    │
@@ -367,7 +455,7 @@ Debug artifacts, if you add or enable them yourself, may contain conversation co
                                 ▼
                     ┌────────────────────────┐
                     │      AI Web UI         │
-                    │   ChatGPT (v0.1)       │
+                    │   ChatGPT adapter      │
                     └───────────┬────────────┘
                                 │
                                 │ connected tools
@@ -393,7 +481,7 @@ That difference is the entire project.
 
 | Provider | Status |
 |---|---|
-| ChatGPT Web | **v0.1 adapter** |
+| ChatGPT Web | **adapter available** |
 | Other AI Web UIs | Provider layer ready for future adapters |
 
 The provider boundary is kept separate from CLI state and delivery semantics so additional Web UIs do not need to reinvent the relay.
@@ -405,7 +493,7 @@ The provider boundary is kept separate from CLI state and delivery semantics so 
 | Code | Meaning |
 |---:|---|
 | `0` | submitted / already submitted / successful command |
-| `2` | invalid CLI input / unknown submission |
+| `2` | invalid CLI input / unknown submission / skill already exists |
 | `10` | login required or login not confirmed |
 | `11` | conversation alias not found |
 | `12` | composer/input preparation failed |
@@ -419,7 +507,7 @@ The provider boundary is kept separate from CLI state and delivery semantics so 
 
 ## 🤝 Contributing
 
-Issues, adapters, selector fixes, installer improvements, and ideas for cleaner one-way agent handoffs are welcome.
+Issues, adapters, selector fixes, installer improvements, Agent Skill improvements, and ideas for cleaner one-way agent handoffs are welcome.
 
 If an AI Web UI changes its DOM and the adapter stops seeing the composer, that's a particularly useful issue to report.
 
