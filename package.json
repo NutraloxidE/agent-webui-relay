@@ -1,6 +1,6 @@
 {
   "name": "agent-webui-relay",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "One-way CLI relay for dispatching agent tasks to AI web interfaces with Playwright.",
   "type": "module",
   "bin": {
@@ -27,12 +27,16 @@
   "files": [
     "dist",
     "README.md",
+    "README.ja.md",
+    "CHANGELOG.md",
     "install.sh",
     "install.ps1"
   ],
   "keywords": [
     "playwright",
     "ai",
+    "agent",
+    "agent-skills",
     "cli",
     "automation",
     "relay"
